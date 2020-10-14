@@ -1,14 +1,12 @@
-function plotOverlaps(initialBeamParams0,kickStrengths, offsets, planePos, structOff)
+function plotOverlaps(initialBeamParams0,kickStrengths, offsets, planePos)
     %PLOTOVERLAPS Plot "position scan" plots with variable kickStrengths
     % - initialBeamParams0: List of initial beam parameters for each kick strength
     % - offsets: offset scan array [mm]
     %
     % Assumption: Only a single structure (i.e. negative planePos)!
     %
-
-    if ~exist('structOff', 'var')
-        structOff = 0.0;
-    end
+    % Example run:
+    % plotOverlaps([[0,0]', [.3,0.2]', [-.5,0.3]', [-0.1,-0.2]'], [0,0.5,1.0,1.5], -2:0.1:2, [1,2,-3,4])
     
     %Sanity checks
     assert( length(initialBeamParams0) == length(kickStrengths) )
@@ -37,7 +35,7 @@ function plotOverlaps(initialBeamParams0,kickStrengths, offsets, planePos, struc
         %trueBeamParams_ref = kickSim(initialBeamParams0(:,kickStrengthIdx),kickStrength(kickStrengthIdx), planePos)
         
         %Where would the beam with offset=0 end up in the structure?
-        ballisticBiasStructure = initialBeamParams0(1,kickStrengthIdx) + initialBeamParams0(2,kickStrengthIdx)*abs(planePos(planePos_structureIdx)) + structOff;
+        ballisticBiasStructure = initialBeamParams0(1,kickStrengthIdx) + initialBeamParams0(2,kickStrengthIdx)*abs(planePos(planePos_structureIdx));
         %Where would the beam with offset=0 end up on the final screen?
         ballisticBiasScreen = initialBeamParams0(1,kickStrengthIdx) + initialBeamParams0(2,kickStrengthIdx)*planePos(end);
         
@@ -78,15 +76,15 @@ function plotOverlaps(initialBeamParams0,kickStrengths, offsets, planePos, struc
     figure(2)
     title('Correction 1')
     xlabel('Initial offset [mm]')
-    ylabel('Position on screen [mm] - ballistic bias to screen')
+    ylabel('Consistent position on screen [mm]')
     lgd = legend('Location', 'northwest');
     title(lgd, 'Kick [mrad/mm]')
     print('corr1.png', '-dpng')
 
     figure(3)
     title('Correction 2')
-    xlabel('Offset in structure [mm]')
-    ylabel('Position on screen relative to structure (??) [mm] - ballistic bias')
+    xlabel('Consistent position in structure [mm]')
+    ylabel('Consistent position on screen [mm]')
     lgd = legend('Location', 'northwest');
     title(lgd, 'Kick [mrad/mm]')
     print('corr2.png', '-dpng')
