@@ -1,17 +1,28 @@
-function plotOverlaps_coordReconstruct(initialBeamParams0,kickStrengths, offsets, planePos, planeOffsets)
+function plotOverlaps_coordReconstruct(initialBeamParams0,kickStrengths, offsets, planePos, planeOffsets, measSigma)
     %PLOTOVERLAPS Plot "position scan" plots with variable kickStrengths
     % - initialBeamParams0: List of initial beam parameters for each kick strength
     % - offsets: offset scan array [mm]
+    % - measSigma: Random error of the measurments [mm]
     %
     % Note: Structure offset is treated internally in kickSim
     %
     % Assumption: Only a single structure (i.e. negative planePos)!
     %
-    % Example run:
-    % plotOverlaps_coordReconstruct([[0,0]', [.3,0.2]', [-.5,0.0]', [0.2,-0.5]'], [0,0.5,1.0,1.5], -2:.5:2, [1,2,-3,4],[-1,1,-1,1])
+    % Example runs:
+    % Nice for the side view:
+    %  plotOverlaps_coordReconstruct([[0,0]', [.3,0.2]', [-.5,0.0]', [0.2,-0.5]'], [0,0.5,1.0,1.5], -2:.5:2, [1,2,-3,4],[-1,1,-1,1])
+    % More points, better for WFM plot
+    %  plotOverlaps_coordReconstruct([[0,0]', [.3,0.2]', [-.5,0.0]', [0.2,-0.5]'], [0,0.5,1.0,1.5], -2:.05:2, [1,2,-3,4],[-1,1,-1,1])
+    % With a measurement error of 50 um:
+    %  plotOverlaps_coordReconstruct([[0,0]', [.3,0.2]', [-.5,0.0]', [0.2,-0.5]'], [0,0.5,1.0,1.5], -2:.05:2, [1,2,-3,4],[-1,1,-1,1],0.05)
+    %  Note: This appears to be a "critical value" for the reconstruction
+    %  to succeed, at least with the given distances
     
     if ~exist('planeOffsets', 'var')
         planeOffsets = zeros(1,length(planePos));
+    end
+    if ~exist('measSigma', 'var')
+        measSigma = 0.0;
     end
     
     %% Sanity checks
@@ -36,6 +47,7 @@ function plotOverlaps_coordReconstruct(initialBeamParams0,kickStrengths, offsets
     %% Simulate
     hitPositions     = zeros(length(kickStrengths),length(planePos),length(offsets));
     hitPositions_ref = zeros(length(kickStrengths),length(planePos));
+    WFMsignals = zeros(length(kickStrengths), length(offsets));
     for kickStrengthIdx=1:length(kickStrengths)
         initialBeamParams = ones(2,length(offsets)) .* initialBeamParams0(:,kickStrengthIdx);
         initialBeamParams(1,:) = initialBeamParams(1,:)+offsets;
@@ -49,10 +61,14 @@ function plotOverlaps_coordReconstruct(initialBeamParams0,kickStrengths, offsets
         trueBeamParams_ref = kickSim(initialBeamParams0(:,kickStrengthIdx),kickStrength(kickStrengthIdx), planePos, ...
             false, planeOffsets(planePos_structureIdx));
         
-        %Make shifted hit positions
+        %WFM signals to be alligned
+        WFMsignals(kickStrengthIdx,:) = kickStrengths(kickStrengthIdx) * ...
+            abs(trueBeamParams(planePos_structureIdx+1,:,1) - planeOffsets(planePos_structureIdx) );
+        
+        %Make shifted hit positions with random smearing
         for planeIdx=1:length(planePos)
-            hitPositions(kickStrengthIdx,planeIdx,:) = trueBeamParams(planeIdx+1,:,1) + planeOffsets(planeIdx);
-            hitPositions_ref(kickStrengthIdx,planeIdx) = trueBeamParams_ref(planeIdx+1,1,1) + planeOffsets(planeIdx);
+            hitPositions(kickStrengthIdx,planeIdx,:) = trueBeamParams(planeIdx+1,:,1) + planeOffsets(planeIdx) + normrnd(0,measSigma,1,length(offsets));
+            hitPositions_ref(kickStrengthIdx,planeIdx) = trueBeamParams_ref(planeIdx+1,1,1) + planeOffsets(planeIdx) + normrnd(0,measSigma);
         end
         
         %Plot side view: True positions
@@ -82,6 +98,11 @@ function plotOverlaps_coordReconstruct(initialBeamParams0,kickStrengths, offsets
     % Note: mean(hitPositions_ref(:,1))-avgPos0 ~= 0; this was included for clarity
     % Note: In a 'reconstructed' case, planePos(1) is most likely 0; here
     avgAng1 = ( (mean(hitPositions_ref(:,2))-avgPos0) - (mean(hitPositions_ref(:,1))-avgPos0)) / (planePos(2)-planePos(1)) %#ok<NOPRT> %[mm/m = mrad]
+    
+    %Not strictly needed -- one can also use the coordinate system "as is"
+    % Note: Must then comment out the assert statements below
+    %avgPos0 = 0;
+    %avgAng1 = 0;
     
     %Compute "recentered" positions and angles:
     beam_ref = zeros(2,length(kickStrengths));
@@ -134,17 +155,32 @@ function plotOverlaps_coordReconstruct(initialBeamParams0,kickStrengths, offsets
     figure(3)
     clf()
     hold on;
+    yyaxis left
+    phs = [];
     for kickStrengthIdx=1:length(kickStrengths)
-        plot( offsets + ballisticBiasStructure(kickStrengthIdx), ...
-              squeeze(hitPositions(kickStrengthIdx,end,:))-ballisticBiasScreen(kickStrengthIdx)+ballisticBiasStructure(kickStrengthIdx), ...
-              'DisplayName', num2str(kickStrengths(kickStrengthIdx)) );
+        ph = plot( offsets + ballisticBiasStructure(kickStrengthIdx), ...
+                   squeeze(hitPositions(kickStrengthIdx,end,:))-ballisticBiasScreen(kickStrengthIdx)+ballisticBiasStructure(kickStrengthIdx), ...
+                   '-', ...
+                   'DisplayName', num2str(kickStrengths(kickStrengthIdx)), ...
+                   'Color', colorCycle(kickStrengthIdx,:));
+        phs = [phs, ph]; %#ok<AGROW>
     end
     grid on;
     title('Correction 2')
     xlabel('Consistent position in structure [mm]')
     ylabel('Consistent position on screen [mm]')
-    lgd = legend('Location', 'northwest');
+    
+    yyaxis right
+    for kickStrengthIdx=1:length(kickStrengths)
+        plot (offsets + ballisticBiasStructure(kickStrengthIdx), WFMsignals(kickStrengthIdx,:), ...
+            '*--', 'Color', colorCycle(kickStrengthIdx,:));
+    end
+    ylabel ('WFM signal [a.u.]')
+        
+    yyaxis left
+    lgd = legend(phs, 'Location', 'northwest');
     title(lgd, 'Kick [mrad/mm]')
+    
     print('offset_corr2.png', '-dpng')
     
     figure(10)
